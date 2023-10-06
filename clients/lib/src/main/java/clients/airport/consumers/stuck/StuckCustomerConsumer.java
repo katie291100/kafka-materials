@@ -12,11 +12,15 @@ import java.util.Set;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.serialization.IntegerDeserializer;
+import org.apache.kafka.common.serialization.IntegerSerializer;
 
 import clients.airport.AirportProducer;
 import clients.airport.AirportProducer.TerminalInfo;
 import clients.airport.AirportProducer.TerminalInfoDeserializer;
+import clients.airport.AirportProducer.TerminalInfoSerializer;
 import clients.airport.consumers.AbstractInteractiveShutdownConsumer;
 import clients.messages.MessageProducer;
 
@@ -26,13 +30,14 @@ import clients.messages.MessageProducer;
  */
 public class StuckCustomerConsumer extends AbstractInteractiveShutdownConsumer {
 
-	private static final String TOPIC_STUCK_CUSTOMERS = "selfservice-stuck-customers";
+	private static final String TOPIC_STUCK_CUSTOMERS = "selfservice-stuck";
 
 	public void run() {
 		Properties props = new Properties();
 		props.put("bootstrap.servers", MessageProducer.BOOTSTRAP_SERVERS);
 		props.put("group.id", "stuck-customers-simple");
 		props.put("enable.auto.commit", "true");
+		KafkaProducer<Integer, TerminalInfo>  producer = new KafkaProducer<>(props, new IntegerSerializer(), new TerminalInfoSerializer());
 
 		Set<Integer> startedCheckins = new HashSet<>();
 
@@ -71,8 +76,10 @@ public class StuckCustomerConsumer extends AbstractInteractiveShutdownConsumer {
 				    		if(startedCheckins.contains(key)) {
 				    			System.out.printf(String.format("Customer got stuck at Kiosk %d \n", key));
 					    		startedCheckins.remove(key);
+					    		TerminalInfo tInfo = new TerminalInfo();
+								tInfo.stuck = true;
+								producer.send(new ProducerRecord<>(AirportProducer.TOPIC_STUCK, key, tInfo));
 				    		}
-				    		System.out.printf("System crashed");
 				    		break;
 				    };
 
@@ -80,7 +87,6 @@ public class StuckCustomerConsumer extends AbstractInteractiveShutdownConsumer {
 
 			}
 		} 
-		// TODO: exercise
 	}
 
 	public static void main(String[] args) {
