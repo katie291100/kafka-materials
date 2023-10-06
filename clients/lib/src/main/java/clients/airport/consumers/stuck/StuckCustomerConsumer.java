@@ -2,7 +2,9 @@ package clients.airport.consumers.stuck;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Properties;
 import java.util.Set;
@@ -40,8 +42,17 @@ public class StuckCustomerConsumer extends AbstractInteractiveShutdownConsumer {
 
 			while (!done) {
 				ConsumerRecords<Integer, TerminalInfo> records = consumer.poll(Duration.ofSeconds(10));
+			      
+				// Create a list to store the records
+		        ArrayList<ConsumerRecord<Integer, TerminalInfo>> recordList = new ArrayList<>();
 
-				for (ConsumerRecord<Integer, TerminalInfo> r : records) {
+		        // Iterate through the iterator and add records to the list
+		        records.iterator().forEachRemaining(recordList::add);
+
+		        // Sort the list based on record timestamps using a lambda expression
+		        recordList.sort((record1, record2) -> Long.compare(record1.timestamp(), record2.timestamp()));
+
+				for (ConsumerRecord<Integer, TerminalInfo> r : recordList) {
 				    Integer key = r.key();
 				    TerminalInfo value = r.value();
 				    String consumerTopic = r.topic();
@@ -49,17 +60,20 @@ public class StuckCustomerConsumer extends AbstractInteractiveShutdownConsumer {
 				    switch (consumerTopic.toString()) {
 				    	case AirportProducer.TOPIC_CHECKIN:
 				    		startedCheckins.add(key);
+				    		break;
 				    	case AirportProducer.TOPIC_COMPLETED:
 				    		startedCheckins.remove(key);
+				    		break;
 				    	case AirportProducer.TOPIC_CANCELLED:
 				    		startedCheckins.remove(key);
+				    		break;
 				    	case AirportProducer.TOPIC_OUTOFORDER:
 				    		if(startedCheckins.contains(key)) {
 				    			System.out.printf(String.format("Customer got stuck at Kiosk %d \n", key));
 					    		startedCheckins.remove(key);
 				    		}
 				    		System.out.printf("System crashed");
-
+				    		break;
 				    };
 
 				}
