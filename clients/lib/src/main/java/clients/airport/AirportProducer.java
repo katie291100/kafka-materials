@@ -39,6 +39,7 @@ public class AirportProducer extends AirportSimulator implements AutoCloseable {
 		public int paperLeft;
 	}
 
+	
 	public static class TerminalInfoSerializer implements Serializer<TerminalInfo> {
 		@Override
 		public byte[] serialize(String topic, TerminalInfo data) {

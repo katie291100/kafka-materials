@@ -24,6 +24,7 @@ public class MessageProducer {
 		props.put("bootstrap.servers", BOOTSTRAP_SERVERS);
 
 		try (Producer<String, String> producer = new KafkaProducer<>(props, new StringSerializer(),
+				// Changes to bytes
 				new StringSerializer());
 				BufferedReader bR = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8))) {
 			System.out.print("Enter your name: ");
