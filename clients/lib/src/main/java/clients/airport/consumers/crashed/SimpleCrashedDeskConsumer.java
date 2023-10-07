@@ -33,7 +33,6 @@ public class SimpleCrashedDeskConsumer extends AbstractInteractiveShutdownConsum
 		Properties props = new Properties();
 		props.put("bootstrap.servers", MessageProducer.BOOTSTRAP_SERVERS);
 		props.put("group.id", "crashed-desks-simple");
-        Instant currentTime = Instant.now();
 
 		// Kafka will auto-commit every 5s based on the last poll() call
 		props.put("enable.auto.commit", "true");
@@ -43,10 +42,10 @@ public class SimpleCrashedDeskConsumer extends AbstractInteractiveShutdownConsum
         
 		try (KafkaConsumer<Integer, TerminalInfo> consumer = new KafkaConsumer<>(props, new IntegerDeserializer(), new TerminalInfoDeserializer())) {
 			consumer.subscribe(Collections.singleton(AirportProducer.TOPIC_STATUS));
-			System.out.println("subscribed");
+
 			while (!done) {
-				ConsumerRecords<Integer, TerminalInfo> records = consumer.poll(Duration.ofSeconds(10));
-				System.out.println("record1");
+				ConsumerRecords<Integer, TerminalInfo> records = consumer.poll(Duration.ofSeconds(1));
+		        Instant currentTime = Instant.now();
 
 				// Create a list to store the records
 
@@ -66,19 +65,17 @@ public class SimpleCrashedDeskConsumer extends AbstractInteractiveShutdownConsum
 				    // Iterate through the entries and find keys with values more than 12 seconds ago
 			        
 				}
-				System.out.println(lastHeartbeat.entrySet());
-
 				for (Map.Entry<Integer, Instant> entry : lastHeartbeat.entrySet()) {
 		            Integer key = entry.getKey();
 		            Instant value = entry.getValue();
-		            long secondsElapsed = currentTime.getEpochSecond() - value.getEpochSecond();
-		            System.out.println(secondsElapsed);
-		            if (secondsElapsed <= (-12) && (!currentlyCrashed.contains(key))) {
-		                System.out.println("Key " + key + " had its last heartbeat more than 12 seconds ago.");
+		            Long between = Duration.between(value, currentTime).toSeconds();
+		            
+		            if (between >= 12 && (!currentlyCrashed.contains(key))) {
+		                System.out.printf("Key " + key + " had its last heartbeat more than 12 seconds ago. \n");
 		                currentlyCrashed.add(key);
-		            } else if(secondsElapsed > 12) {
+		            } else if(between >= 12) {
 		            	{}
-		            } else if(secondsElapsed<12) {
+		            } else if(between < 12) {
 		            	currentlyCrashed.remove(key);
 		            }
 		            
