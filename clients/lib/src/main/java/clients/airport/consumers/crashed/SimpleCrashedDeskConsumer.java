@@ -1,10 +1,21 @@
 package clients.airport.consumers.crashed;
 
+import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Map;
 import java.util.Properties;
 import java.util.TreeMap;
 
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.common.serialization.IntegerDeserializer;
+
+import clients.airport.AirportProducer;
+import clients.airport.AirportProducer.TerminalInfo;
+import clients.airport.AirportProducer.TerminalInfoDeserializer;
 import clients.airport.consumers.AbstractInteractiveShutdownConsumer;
 import clients.messages.MessageProducer;
 
@@ -22,8 +33,43 @@ public class SimpleCrashedDeskConsumer extends AbstractInteractiveShutdownConsum
 		props.put("enable.auto.commit", "true");
 
 		Map<Integer, Instant> lastHeartbeat = new TreeMap<>();
+        ArrayList<Integer> currentlyCrashed = new ArrayList<>();
+        
+		try (KafkaConsumer<Integer, TerminalInfo> consumer = new KafkaConsumer<>(props, new IntegerDeserializer(), new TerminalInfoDeserializer())) {
+			consumer.subscribe(Collections.singleton(AirportProducer.TOPIC_STATUS));
 
-		// TODO: exercise
+			while (!done) {
+				ConsumerRecords<Integer, TerminalInfo> records = consumer.poll(Duration.ofSeconds(1));
+		        Instant currentTime = Instant.now();
+
+				for (ConsumerRecord<Integer, TerminalInfo> r : records) {
+				    Integer key = r.key();
+				    Instant lastHb = lastHeartbeat.get(key);
+				    Instant currentRecordTime = Instant.ofEpochMilli(r.timestamp());
+				    
+				    if(lastHb == null){
+				    	lastHeartbeat.put(key, Instant.ofEpochMilli(r.timestamp()));
+				    }
+				    else if (currentRecordTime.isAfter(lastHb)){
+				    	lastHeartbeat.put(key, Instant.ofEpochMilli(r.timestamp()));
+				    };			        
+				}
+
+				for (Map.Entry<Integer, Instant> entry : lastHeartbeat.entrySet()) {
+		            Integer key = entry.getKey();
+		            Instant value = entry.getValue();
+		            Long between = Duration.between(value, currentTime).toSeconds();
+		            
+		            if (between >= 12 && (!currentlyCrashed.contains(key))) {
+		                System.out.printf("Key " + key + " had its last heartbeat more than 12 seconds ago. \n");
+		                currentlyCrashed.add(key);
+		            } else if(between < 12) {
+		            	currentlyCrashed.remove(key);
+		            }
+		        }
+
+			}
+		} 
 	}
 
 	public static void main(String[] args) {

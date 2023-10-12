@@ -22,6 +22,7 @@ public class AirportProducer extends AirportSimulator implements AutoCloseable {
 	public static final String TOPIC_LOWPAPER = "selfservice-lowpaper";
 	public static final String TOPIC_OUTOFORDER = "selfservice-outoforder";
 	public static final String TOPIC_STATUS = "selfservice-status";
+	public static final String TOPIC_STUCK = "selfservice-stuck";
 	public static final String BOOTSTRAP_SERVERS = "localhost:9094,localhost:9095,localhost:9096";
 
 	private static final Map<AirportSimulator.EventType, String> EVENT_TYPE_TO_TOPIC = new HashMap<>();
@@ -32,6 +33,8 @@ public class AirportProducer extends AirportSimulator implements AutoCloseable {
 		EVENT_TYPE_TO_TOPIC.put(EventType.LOW_PAPER, TOPIC_LOWPAPER);
 		EVENT_TYPE_TO_TOPIC.put(EventType.OUT_OF_ORDER, TOPIC_OUTOFORDER);
 		EVENT_TYPE_TO_TOPIC.put(EventType.STATUS, TOPIC_STATUS);
+		EVENT_TYPE_TO_TOPIC.put(EventType.STUCK, TOPIC_STUCK);
+
 	}
 
 	public static class TerminalInfo {
@@ -87,7 +90,7 @@ public class AirportProducer extends AirportSimulator implements AutoCloseable {
 			TerminalInfo tInfo = new TerminalInfo();
 			tInfo.stuck = t.isStuck();
 			tInfo.paperLeft = t.getPaperLeft();
-			
+
 			producer.send(new ProducerRecord<>(topicName, t.getId(), tInfo));
 		}
 	}
