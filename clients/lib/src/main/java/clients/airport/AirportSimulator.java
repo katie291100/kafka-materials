@@ -52,7 +52,7 @@ public class AirportSimulator {
 	private static final int LOW_PAPER_THRESHOLD = 3;
 	
 	public enum EventType {
-		CHECK_IN, CANCELLED, COMPLETED, OUT_OF_ORDER, LOW_PAPER, STATUS, STUCK;
+		CHECK_IN, CANCELLED, COMPLETED, OUT_OF_ORDER, LOW_PAPER, STATUS;
 	}
 
 	public class Terminal {
