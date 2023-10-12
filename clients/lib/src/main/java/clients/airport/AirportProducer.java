@@ -84,7 +84,7 @@ public class AirportProducer extends AirportSimulator implements AutoCloseable {
 
 			// Uncomment to use per-area partitioning
 			props.put(ProducerConfig.PARTITIONER_CLASS_CONFIG, AreaPartitioner.class.getCanonicalName());
-			
+
 			producer = new KafkaProducer<>(props, new IntegerSerializer(), new TerminalInfoSerializer());
 		}
 
@@ -93,7 +93,7 @@ public class AirportProducer extends AirportSimulator implements AutoCloseable {
 			TerminalInfo tInfo = new TerminalInfo();
 			tInfo.stuck = t.isStuck();
 			tInfo.paperLeft = t.getPaperLeft();
-			
+
 			producer.send(new ProducerRecord<>(topicName, t.getId(), tInfo));
 		}
 	}
