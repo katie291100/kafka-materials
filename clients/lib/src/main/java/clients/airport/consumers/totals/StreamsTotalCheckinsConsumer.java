@@ -1,8 +1,12 @@
 package clients.airport.consumers.totals;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Properties;
 
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -11,9 +15,12 @@ import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.serialization.IntegerDeserializer;
 import org.apache.kafka.common.serialization.Serde;
 import org.apache.kafka.common.serialization.Serdes;
+import org.apache.kafka.streams.KafkaStreams;
 import org.apache.kafka.streams.StreamsBuilder;
 import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.kstream.Consumed;
+import org.apache.kafka.streams.kstream.Grouped;
+import org.apache.kafka.streams.kstream.KStream;
 import org.apache.kafka.streams.kstream.Printed;
 
 import clients.airport.AirportProducer;
@@ -27,9 +34,10 @@ import clients.messages.MessageProducer;
  * handle rebalancing, and wouldn't scale as it doesn't apply any windows or splits the input
  * in any particular way.
  */
-public class TotalCheckinsConsumer extends AbstractInteractiveShutdownConsumer {
+public class StreamsTotalCheckinsConsumer {
+	public final String TOPIC_CHECKINS_BY_DAY = "selfservice-checkins-by-day";
 
-	public void run() {
+	public KafkaStreams run() {
 		// 1. Use StreamsBuilder to build the topology
 		StreamsBuilder builder = new StreamsBuilder();
 
@@ -38,19 +46,26 @@ public class TotalCheckinsConsumer extends AbstractInteractiveShutdownConsumer {
 		props.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, AirportProducer.BOOTSTRAP_SERVERS);
 		props.put(StreamsConfig.APPLICATION_ID_CONFIG, "streams-status");
 		
-		int started = 0, completed = 0, cancelled = 0;
 
 		// Consume the status updates from the TOPIC_STATUS (Integer key and TerminalInfo value)
 		Serde<TerminalInfo> serde = new AirportProducer.TerminalInfoSerde();
-		builder.stream(List.of(
+		KStream<String, Long> totalStream = builder.stream(List.of(
                 AirportProducer.TOPIC_COMPLETED,
                 AirportProducer.TOPIC_CANCELLED,
-                AirportProducer.TOPIC_CHECKIN), Consumed.with(Serdes.Integer(), serde)).processValues(TimestampProcessor<Integer, AirportProducer.TerminalInfo>::new)
+                AirportProducer.TOPIC_CHECKIN), Consumed.with(Serdes.Integer(), serde)).process(TimestampProcessor::new)
+			.groupByKey(Grouped.with(Serdes.String(), Serdes.Long())).count()
+            .toStream();
+            
+        totalStream.to(TOPIC_CHECKINS_BY_DAY);
+        totalStream.print(Printed.toSysOut());
 			// Map each key-value to a formatted string
-			.mapValues((k, v) -> String.format("Status from %s: %d sheets%n", k, v.paperLeft))
-			// Print them out to the standard output
-			.print(Printed.toSysOut());
-		
+	
+        KafkaStreams kStreams = new KafkaStreams(builder.build(), props);
+        Runtime.getRuntime().addShutdownHook(new Thread(kStreams::close));
+        kStreams.start();
+
+        return kStreams;}
+
 //
 //		try (KafkaConsumer<Integer, TerminalInfo> consumer = new KafkaConsumer<>(props, new IntegerDeserializer(), new TerminalInfoDeserializer())) {
 //			consumer.subscribe(Arrays.asList(AirportProducer.TOPIC_CHECKIN, AirportProducer.TOPIC_COMPLETED, AirportProducer.TOPIC_CANCELLED));
@@ -79,10 +94,19 @@ public class TotalCheckinsConsumer extends AbstractInteractiveShutdownConsumer {
 //				System.out.printf("Checkins at %s: %d started, %d completed, %d cancelled%n", latestInstant, started, completed, cancelled);
 //			}
 //		}
-	}
+	
 
 	public static void main(String[] args) {
-		new TotalCheckinsConsumer().runUntilEnterIsPressed(System.in);
+	    KafkaStreams kStreams = new StreamsTotalCheckinsConsumer().run();
+
+	    // Shut down the application after pressing Enter in the Console
+	    try (BufferedReader br = new BufferedReader(new InputStreamReader(System.in))) {
+	      br.readLine();
+	    } catch (IOException e) {
+	      e.printStackTrace();
+	    } finally {
+	      kStreams.close();
+	    }
 	}
 
 }
