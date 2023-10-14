@@ -1,4 +1,4 @@
-package clients.airport.consumers.totals;
+package clients.airport.consumers.windows;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -22,11 +22,15 @@ import org.apache.kafka.streams.kstream.Consumed;
 import org.apache.kafka.streams.kstream.Grouped;
 import org.apache.kafka.streams.kstream.KStream;
 import org.apache.kafka.streams.kstream.Printed;
+import org.apache.kafka.streams.kstream.SlidingWindows;
+import org.apache.kafka.streams.kstream.Suppressed;
+import org.apache.kafka.streams.kstream.Suppressed.BufferConfig;
 
 import clients.airport.AirportProducer;
 import clients.airport.AirportProducer.TerminalInfo;
 import clients.airport.AirportProducer.TerminalInfoDeserializer;
 import clients.airport.consumers.AbstractInteractiveShutdownConsumer;
+import clients.airport.consumers.totals.TimestampProcessor;
 import clients.messages.MessageProducer;
 
 /**
@@ -34,8 +38,7 @@ import clients.messages.MessageProducer;
  * handle rebalancing, and wouldn't scale as it doesn't apply any windows or splits the input
  * in any particular way.
  */
-public class StreamsTotalCheckinsConsumer {
-	public final String TOPIC_CHECKINS_BY_DAY = "selfservice-checkins-by-day";
+public class StreamsWindowedAreaCheckinsConsumer {
 
 	public KafkaStreams run() {
 		// 1. Use StreamsBuilder to build the topology
@@ -49,17 +52,13 @@ public class StreamsTotalCheckinsConsumer {
 
 		// Consume the status updates from the TOPIC_STATUS (Integer key and TerminalInfo value)
 		Serde<TerminalInfo> serde = new AirportProducer.TerminalInfoSerde();
-		KStream<String, Long> totalStream = builder.stream(List.of(
-                AirportProducer.TOPIC_COMPLETED,
-                AirportProducer.TOPIC_CANCELLED,
-                AirportProducer.TOPIC_CHECKIN), Consumed.with(Serdes.Integer(), serde)).process(TimestampProcessor::new)
-			.groupByKey(Grouped.with(Serdes.String(), Serdes.Long())).count() //returns KTable
-            .toStream(); //Change to stream
-            
-        totalStream.to(TOPIC_CHECKINS_BY_DAY);
-        totalStream.print(Printed.toSysOut());
-			// Map each key-value to a formatted string
-	
+		builder.stream(
+                AirportProducer.TOPIC_CHECKIN, Consumed.with(Serdes.Integer(), serde)).selectKey((k, v) -> k/100)
+		        .groupByKey(Grouped.with(Serdes.Integer(), serde))
+		        .windowedBy(SlidingWindows.ofTimeDifferenceAndGrace(Duration.ofSeconds(30), Duration.ofSeconds(60)))
+		        .count().suppress(Suppressed.untilWindowCloses(BufferConfig.unbounded())).toStream().print(Printed.toSysOut());
+		
+		// Prints in the form stream: [AREA@START/END] Count
         KafkaStreams kStreams = new KafkaStreams(builder.build(), props);
         Runtime.getRuntime().addShutdownHook(new Thread(kStreams::close));
         kStreams.start();
@@ -97,7 +96,7 @@ public class StreamsTotalCheckinsConsumer {
 	
 
 	public static void main(String[] args) {
-	    KafkaStreams kStreams = new StreamsTotalCheckinsConsumer().run();
+	    KafkaStreams kStreams = new StreamsWindowedAreaCheckinsConsumer().run();
 
 	    // Shut down the application after pressing Enter in the Console
 	    try (BufferedReader br = new BufferedReader(new InputStreamReader(System.in))) {
